@@ -87,10 +87,12 @@
     const SUPABASE_URL = "https://fileybakrcrpujajioqj.supabase.co"; 
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpbGV5YmFrcmNycHVqYWppb3FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyOTIwMDEsImV4cCI6MjA5NDg2ODAwMX0.JmbCZJHFDdZ22JCx74kJgjZmpo2U6ON9cMoD0lc90pw";
 
-
     const mySupabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     let correctAnswers = []; 
     let currentQuizId = ""; // 用來儲存當前考卷的 ID
+
+    // 建立一個字母對照表，確保 0->A, 1->B, 2->C, 3->D
+    const letterMap = ['A', 'B', 'C', 'D', 'E', 'F'];
 
     async function loadQuiz() {
         try {
@@ -115,15 +117,22 @@
             container.innerHTML = ''; 
             
             questionsArray.forEach((q, qIndex) => {
-                correctAnswers.push({ index: qIndex, answer: q.answer.trim().toUpperCase() });
+                // ⭐ 強制轉換正確答案為去空格的大寫字母 (如 "A")
+                const finalRightAns = q.answer.trim().toUpperCase();
+                correctAnswers.push({ index: qIndex, answer: finalRightAns });
 
                 let optionsHtml = '';
-                q.options.forEach((opt) => {
-                    const optLetter = opt.trim().charAt(0).toUpperCase(); 
+                q.options.forEach((opt, optIdx) => {
+                    // ⭐ 修正核心：不管後端傳什麼，我們依據選項的順序 (0,1,2,3) 強制賦予 A, B, C, D
+                    const optLetter = letterMap[optIdx] || 'A'; 
+                    
+                    // 為了美觀，如果 AI 吐出來的選項本身沒有帶 "A."，我們在網頁畫面上幫它加上去顯示
+                    const showText = opt.trim().toUpperCase().startsWith(optLetter) ? opt : `${optLetter}. ${opt}`;
+
                     optionsHtml += `
                         <label class="option-label" data-q="${qIndex}" data-opt="${optLetter}">
                             <input type="radio" name="q_${qIndex}" value="${optLetter}" required>
-                            ${opt}
+                            ${showText}
                         </label>
                     `;
                 });
@@ -152,7 +161,6 @@
     // ⚡ 撈取排行榜並畫在網頁上的函數
     async function fetchLeaderboard() {
         try {
-            // 從 quiz_results 撈出這張考卷所有的得分紀錄，並依照分數從高到低 (降序) 排序前 10 名
             const { data, error } = await mySupabase
                 .from('quiz_results')
                 .select('*')
@@ -183,7 +191,6 @@
                 `;
             });
 
-            // 秀出排行榜區塊
             document.getElementById('leaderboardBox').style.display = 'block';
 
         } catch (err) {
@@ -196,9 +203,8 @@
         e.preventDefault(); 
         
         const userName = document.getElementById('userNameInput').value.trim();
-        let score = 0;
+        let correctCount = 0; // 改用計算「答對題數」來防範浮點數四捨五入落差
         const totalQuestions = correctAnswers.length;
-        const scorePerQuestion = 100 / totalQuestions;
 
         // 1. 批改答案與上色
         correctAnswers.forEach((item) => {
@@ -216,13 +222,16 @@
                 label.querySelector('input').disabled = true;
             });
 
-            if (userAns === rightAns) score += scorePerQuestion;
+            if (userAns === rightAns) {
+                correctCount += 1;
+            }
             document.getElementById(`explain_${qIndex}`).style.display = 'block';
         });
 
-        const finalScore = Math.round(score);
+        // ⭐ 修正計分法：用 (答對題數 / 總題數) * 100，算出精準的 100 分制分數
+        const finalScore = Math.round((correctCount / totalQuestions) * 100);
 
-        // 2. ⚡ 核心亮點：將這個人的名字與分數上傳到 Supabase 資料庫
+        // 2. ⚡ 將這個人的名字與分數上傳到 Supabase 資料庫
         try {
             const { error } = await mySupabase
                 .from('quiz_results')
@@ -241,7 +250,6 @@
         document.getElementById('resultCard').style.display = 'block';
         document.getElementById('submitBtn').style.display = 'none'; 
         
-        // 刷新並展示即時排行榜
         await fetchLeaderboard();
         
         window.scrollTo({ top: 0, behavior: 'smooth' });
