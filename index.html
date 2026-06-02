@@ -96,15 +96,25 @@
 
     async function loadQuiz() {
         try {
-            const { data, error } = await mySupabase
-                .from('quizzes')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(1);
+            // 🌟 核心修正：從網址列抓取 ?id= 後面的參數
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlQuizId = urlParams.get('id');
+
+            let query = mySupabase.from('quizzes').select('*');
+
+            if (urlQuizId) {
+                // 如果網址有帶 ID，就精準撈取那張考卷
+                query = query.eq('id', urlQuizId);
+            } else {
+                // 如果沒有帶 ID，才撈最新的一張作備案
+                query = query.order('created_at', { ascending: false }).limit(1);
+            }
+
+            const { data, error } = await query;
 
             if (error) throw error;
             if (!data || data.length === 0) {
-                document.getElementById('quizContainer').innerHTML = '<div class="loading">ℹ️ 目前資料庫裡沒有題目。</div>';
+                document.getElementById('quizContainer').innerHTML = '<div class="loading">ℹ️ 找不到對應的考卷資料。</div>';
                 return;
             }
 
