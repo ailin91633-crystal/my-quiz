@@ -73,16 +73,25 @@
 
     async function initAdminDashboard() {
         try {
-            // 1. 撈取最新的一張考卷資訊
-            const { data: quizDataList, error: quizError } = await mySupabase
-                .from('quizzes')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(1);
+            // 🌟 關鍵改造點 1：從網址解鎖 ID 參數 (?id=xxxx)
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlQuizId = urlParams.get('id');
+
+            let quizQuery = mySupabase.from('quizzes').select('*');
+
+            if (urlQuizId) {
+                // 如果網址有帶 id，精準抓取舊考卷
+                quizQuery = quizQuery.eq('id', urlQuizId);
+            } else {
+                // 如果沒有帶 id，預設撈取最新一筆
+                quizQuery = quizQuery.order('created_at', { ascending: false }).limit(1);
+            }
+
+            const { data: quizDataList, error: quizError } = await quizQuery;
 
             if (quizError) throw quizError;
             if (!quizDataList || quizDataList.length === 0) {
-                document.getElementById('wrongRankContainer').innerHTML = '<div class="no-data">ℹ️ 目前資料庫中無考卷資料。</div>';
+                document.getElementById('wrongRankContainer').innerHTML = '<div class="no-data">ℹ️ 找不到對應的考卷資料。</div>';
                 return;
             }
 
@@ -90,7 +99,7 @@
             document.getElementById('quizTitle').innerText = `📄 當前分析考卷：${quiz.quiz_title || '未命名考卷'}`;
             let questionsArray = typeof quiz.questions === 'string' ? JSON.parse(quiz.questions) : quiz.questions;
 
-            // 2. 撈取該張考卷的所有同仁作答結果
+            // 2. 撈取「該張特定考卷」的所有同仁作答結果
             const { data: results, error: resultsError } = await mySupabase
                 .from('quiz_results')
                 .select('*')
@@ -100,7 +109,7 @@
 
             // 如果還沒有人寫考卷
             if (!results || results.length === 0) {
-                document.getElementById('totalParticipants').innerText = "0";
+                document.getElementById('totalParticipants').innerText = "0 人";
                 document.getElementById('averageScore').innerText = "-- 分";
                 document.getElementById('wrongRankContainer').innerHTML = '<div class="no-data">⏳ 目前尚無同仁交卷，等待數據中...</div>';
                 return;
@@ -115,20 +124,18 @@
             document.getElementById('averageScore').innerText = `${avgScore} / 100 分`;
 
             // 4. 🔥 核心算法：地毯式加總每一題的答錯人數
-            // 初始化一個計數陣列，長度跟題目一樣多，初始值都是 0
             let wrongCounts = questionsArray.map(() => 0);
 
             results.forEach(row => {
-                // 讀取每個人存在 wrong_questions 欄位的字串，例如 "Q1, Q3"
                 if (row.wrong_questions) {
-                    const wrongItems = row.wrong_questions.split(','); // 拆成 ["Q1", " Q3"]
+                    const wrongItems = row.wrong_questions.split(','); 
                     wrongItems.forEach(item => {
-                        const cleanItem = item.trim(); // 去空格 "Q3"
+                        const cleanItem = item.trim(); 
                         if (cleanItem.startsWith('Q')) {
-                            const qNum = parseInt(cleanItem.replace('Q', ''), 10); // 變成數字 3
-                            const qIndex = qNum - 1; // 對應到陣列索引 2
+                            const qNum = parseInt(cleanItem.replace('Q', ''), 10); 
+                            const qIndex = qNum - 1; 
                             if (qIndex >= 0 && qIndex < wrongCounts.length) {
-                                wrongCounts[qIndex] += 1; // 該題答錯人數 +1
+                                wrongCounts[qIndex] += 1; 
                             }
                         }
                     });
@@ -155,8 +162,7 @@
             rankContainer.innerHTML = '';
 
             rankedQuestions.forEach((item, rankIdx) => {
-                // 如果這題完全沒有人錯，就不一定要特別警戒 (或是可以設定高於 0 個人錯才顯示)
-                const isHighAlert = item.wrongRate >= 50 ? 'high-alert' : ''; // 超過半數人錯就亮紅燈
+                const isHighAlert = item.wrongRate >= 50 ? 'high-alert' : ''; 
                 const rightAnsLetter = item.questionData.answer.trim().toUpperCase();
 
                 let optionsHtml = '';
