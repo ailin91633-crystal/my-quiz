@@ -17,15 +17,15 @@
         .user-box { background: #f8fafc; border: 2px dashed #cbd5e1; padding: 20px; border-radius: 12px; margin-bottom: 25px; text-align: center; }
         .user-box input { padding: 10px 15px; font-size: 16px; border: 1px solid #cbd5e1; border-radius: 6px; width: 60%; max-width: 250px; text-align: center; }
         
-        .question-block { margin-bottom: 30px; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; }
-        .question-text { font-size: 17px; font-weight: 600; margin-bottom: 15px; color: #111827; line-height: 1.5; }
+        .quiz-card { margin-bottom: 30px; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; }
+        .question-title { font-size: 17px; font-weight: 600; margin-bottom: 15px; color: #111827; line-height: 1.5; }
         
         .option-label { display: block; padding: 12px 15px; margin-bottom: 10px; background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 8px; cursor: pointer; transition: all 0.2s; font-size: 15px; }
         .option-label:hover { background: #f3f4f6; border-color: #d1d5db; }
         .option-label input { margin-right: 10px; transform: scale(1.1); }
         
-        .option-label.correct { background: #ecfdf5; border-color: var(--success); color: #065f46; font-weight: bold; }
-        .option-label.wrong { background: #fef2f2; border-color: var(--error); color: #991b1b; }
+        /* 回饋區塊樣式 */
+        .feedback-box { margin-top: 12px; padding: 12px 15px; border-radius: 8px; font-size: 15px; line-height: 1.5; display: none; }
         
         .btn-submit { display: block; width: 100%; background: var(--primary); color: white; border: none; padding: 14px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; transition: background 0.2s; }
         .btn-submit:hover { background: #172554; }
@@ -36,11 +36,6 @@
         /* 排行榜樣式 */
         .leaderboard { margin-top: 25px; background: #fafafa; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; display: none; }
         .leaderboard h3 { margin-top: 0; color: var(--primary); border-bottom: 2px solid #e5e7eb; padding-bottom: 10px; }
-        .leaderboard-row { display: flex; justify-content: space-between; padding: 10px 5px; border-bottom: 1px solid #f3f4f6; font-size: 15px; }
-        .leaderboard-row:last-child { border-bottom: none; }
-        .rank-1 { color: #d97706; font-weight: bold; } /* 冠軍金色 */
-
-        .explanation-box { display: none; margin-top: 12px; padding: 12px 15px; background: #fffbeb; border-left: 4px solid #f59e0b; color: #78350f; font-size: 14px; border-radius: 0 4px 4px 0; line-height: 1.5; }
         .loading { text-align: center; color: #6b7280; padding: 40px; font-style: italic; }
     </style>
 </head>
@@ -52,34 +47,15 @@
         <div id="quizTitle" class="quiz-title">讀取考卷中...</div>
     </div>
     
-    <!-- 結算總分看板 -->
     <div id="resultCard" class="result-card">
         <h3>🎉 測驗完成！分數已同步至雲端排行榜！</h3>
         <div>您的得分</div>
         <div id="scoreDisplay" class="score">0 / 100</div>
     </div>
 
-    <!-- 🏆 榮譽排行榜看板 -->
-    <div id="leaderboardBox" class="leaderboard">
-        <h3>🏆 本期晨會即時排行榜</h3>
-        <div id="leaderboardList">
-            <!-- 排行資料動態塞入處 -->
-        </div>
+    <div id="quizContainer">
+        <div class="loading">正在連線至資料庫...</div>
     </div>
-
-    <!-- 考題呈現核心區 -->
-    <form id="quizForm">
-        <!-- 姓名輸入框（強迫填寫才能交卷） -->
-        <div class="user-box">
-            <label style="font-weight: bold; display: block; margin-bottom: 8px;">✍️ 請輸入您的個人職稱/姓名以記錄排行：</label>
-            <input type="text" id="userNameInput" placeholder="例：陳大明 醫師" required>
-        </div>
-
-        <div id="quizContainer">
-            <div class="loading">正在連線至資料庫...</div>
-        </div>
-        <button type="submit" id="submitBtn" class="btn-submit" style="display: none;">確認交卷並查看排行</button>
-    </form>
 </div>
 
 <script>
@@ -142,12 +118,12 @@
                     <div class="quiz-card" id="card_${idx}">
                         <div class="question-title">${idx + 1}. ${q.question}</div>
                         <div class="options-container">${optionsHtml}</div>
-                        <div class="feedback-box" id="feedback_${idx}" style="display:none;"></div>
+                        <div class="feedback-box" id="feedback_${idx}"></div>
                     </div>
                 `;
             });
 
-            // 🌟 修正點：清除任何重複產生的舊區域，並在最下方初始化一個乾淨、隱藏的提交與排行區塊
+            // 清除並重新建立乾淨的動態交卷/排行榜區塊
             const existingSubmit = document.getElementById('dynamicSubmitSection');
             if (existingSubmit) existingSubmit.remove();
 
@@ -156,21 +132,20 @@
             submitSection.id = 'dynamicSubmitSection';
             submitSection.style.marginTop = '30px';
             
-            // 預先塞入結構，但一開始先「隱藏」姓名與確認鍵
             submitSection.innerHTML = `
                 <div id="quizActionArea" style="text-align: center; margin-bottom: 20px;">
-                    <button onclick="revealSubmitForm()" id="checkAnswersBtn" style="background: #2563eb; color: white; border: none; padding: 14px 35px; font-size: 16px; border-radius: 8px; font-weight: 600; cursor: pointer;">回答完畢，計算分數</button>
+                    <button onclick="revealSubmitForm()" id="checkAnswersBtn" style="background: #2563eb; color: white; border: none; padding: 14px 35px; font-size: 16px; border-radius: 8px; font-weight: 600; cursor: pointer; width: 100%;">回答完畢，計算分數</button>
                 </div>
                 
-                <div id="finalSubmitForm" style="display: none; text-align: center; background: #f1f5f9; padding: 25px; border-radius: 12px; border: 1px solid #cbd5e1; margin-bottom: 30px;">
+                <div id="finalSubmitForm" class="user-box" style="display: none;">
                     <h3 style="margin-top:0; color:#1e3a8a;">🎉 太棒了！您已完成所有題目</h3>
                     <p style="color:#475569; font-size:14px; margin-bottom:15px;">請在下方輸入您的姓名，將成績同步至晨會即時排行榜：</p>
-                    <input type="text" id="userName" placeholder="請輸入您的職稱與姓名 (例: 陳大明 醫師)" style="padding: 12px; width: 85%; max-width: 400px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 16px; margin-bottom: 15px;"><br>
-                    <button onclick="submitQuiz()" style="background: #1e40af; color: white; border: none; padding: 14px 45px; font-size: 16px; border-radius: 8px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(30,64,175,0.3);">確認交卷並看解析</button>
+                    <input type="text" id="userName" placeholder="例：陳大明 醫師" style="margin-bottom: 15px;"><br>
+                    <button onclick="submitQuiz()" class="btn-submit" style="box-shadow: 0 4px 6px -1px rgba(30,64,175,0.3);">確認交卷並看解析</button>
                 </div>
 
-                <div id="rankArea" style="margin-top: 40px; display:none;">
-                    <h3 style="color:#0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">🏆 本期晨會即時排行榜</h3>
+                <div id="rankArea" class="leaderboard">
+                    <h3>🏆 本期晨會即時排行榜</h3>
                     <div id="rankList"></div>
                 </div>
             `;
@@ -182,9 +157,8 @@
         }
     }
 
-    // 🌟 點擊「回答完畢，計算分數」後，才會觸發這個顯示姓名輸入框的動作
+    // 🌟 第一階段：點擊「回答完畢，計算分數」
     function revealSubmitForm() {
-        // 檢查是不是每題都有選（防呆）
         let allAnswered = true;
         questionsArray.forEach((q, idx) => {
             const checked = document.querySelector(`input[name="q_${idx}"]:checked`);
@@ -196,14 +170,15 @@
             if (!confirmGap) return;
         }
 
-        // 隱藏第一階段的按鈕，秀出姓名輸入框
+        // 隱藏第一階段按鈕，秀出姓名框
         document.getElementById('quizActionArea').style.display = 'none';
         document.getElementById('finalSubmitForm').style.display = 'block';
         
-        // 幫忙把網頁平滑捲動到輸入框，同仁體驗更好
+        // 滑動引導至輸入框
         document.getElementById('finalSubmitForm').scrollIntoView({ behavior: 'smooth' });
     }
 
+    // 第二階段：輸入名字點擊「確認交卷並看解析」
     async function submitQuiz() {
         const userName = document.getElementById('userName').value.trim();
         if (!userName) {
@@ -214,7 +189,6 @@
         let correctCount = 0;
         let wrongQuestionsArray = []; 
 
-        // 檢查每一題的答案並當場秀出單題正誤回饋
         questionsArray.forEach((q, idx) => {
             const selectedOpt = document.querySelector(`input[name="q_${idx}"]:checked`);
             const userAnswer = selectedOpt ? selectedOpt.value : "";
@@ -226,11 +200,13 @@
             if (userAnswer === correctAnswer) {
                 correctCount++;
                 feedbackBox.innerHTML = `<span style="color:#15803d; font-weight:600;">✅ 答對了！</span><br><span style="color:#64748b; font-size:14px;">💡 解析：${q.explanation || '無'}</span>`;
-                feedbackBox.style.background = "#dcfce7";
+                feedbackBox.style.background = "#ecfdf5";
+                feedbackBox.style.borderLeft = "4px solid var(--success)";
             } else {
                 wrongQuestionsArray.push(`Q${idx + 1}`);
                 feedbackBox.innerHTML = `<span style="color:#b91c1c; font-weight:600;">❌ 答錯囉！正確答案是 (${correctAnswer})</span><br><span style="color:#64748b; font-size:14px;">💡 解析：${q.explanation || '無'}</span>`;
-                feedbackBox.style.background = "#fee2e2";
+                feedbackBox.style.background = "#fef2f2";
+                feedbackBox.style.borderLeft = "4px solid var(--error)";
             }
         });
 
@@ -238,7 +214,7 @@
         const wrongQuestionsString = wrongQuestionsArray.join(', ');
 
         try {
-            // 送進 Supabase
+            // 成績與錯題上傳 Supabase
             const { error: insertError } = await mySupabase
                 .from('quiz_results')
                 .insert([
@@ -252,13 +228,17 @@
 
             if (insertError) throw insertError;
 
-            alert(`交卷成功！您的分數為：${finalScore} 分`);
-            document.getElementById('finalSubmitForm').style.display = 'none'; // 隱藏交卷區
+            // 顯示最上方的分數看板
+            document.getElementById('scoreDisplay').innerText = `${finalScore} / 100 分`;
+            document.getElementById('resultCard').style.display = 'block';
 
-            // 撈取最新排行榜更新到下方
+            // 隱藏交卷輸入框區塊
+            document.getElementById('finalSubmitForm').style.display = 'none'; 
+
+            // 刷新排行榜數據
             loadRankings();
 
-            // 捲動回最上方讓同仁看自己的對錯報告
+            // 自動捲回最上方讓同仁看成績與詳解
             window.scrollTo({ top: 0, behavior: 'smooth' });
 
         } catch (err) {
@@ -286,10 +266,11 @@
             const medals = ['🥇', '🥈', '🥉'];
             rankData.forEach((row, index) => {
                 const medal = medals[index] || `🔹 [第 ${index + 1} 名]`;
+                const isTop1 = index === 0 ? 'class="rank-1"' : '';
                 rankList.innerHTML += `
-                    <div style="padding: 10px; background: white; margin-bottom: 5px; border-radius: 6px; display: flex; justify-content: space-between; border: 1px solid #e2e8f0;">
-                        <span>${medal} ${row.user_name}</span>
-                        <span style="font-weight:700; color:#1e40af;">${row.score} 分</span>
+                    <div style="padding: 10px; background: white; margin-bottom: 5px; border-radius: 6px; display: flex; justify-content: space-between; border: 1px solid #e5e7eb;">
+                        <span ${isTop1}>${medal} ${row.user_name}</span>
+                        <span style="font-weight:700; color:var(--primary);">${row.score} 分</span>
                     </div>
                 `;
             });
@@ -298,7 +279,6 @@
         }
     }
 
-    // 當網頁載入時自動執行
     window.onload = loadQuiz;
 </script>
 
