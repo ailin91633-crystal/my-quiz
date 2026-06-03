@@ -83,12 +83,12 @@
 </div>
 
 <script>
-    // 🔒 請精準填入你的 Supabase 密碼
+    // 🔒 保持與主頁一致的 Supabase 密鑰
     const SUPABASE_URL = "https://fileybakrcrpujajioqj.supabase.co"; 
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpbGV5YmFrcmNycHVqYWppb3FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyOTIwMDEsImV4cCI6MjA5NDg2ODAwMX0.JmbCZJHFDdZ22JCx74kJgjZmpo2U6ON9cMoD0lc90pw";
 
     const mySupabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    let correctAnswers = []; 
+    let questionsArray = []; // 儲存當前題目資料
     let currentQuizId = ""; // 用來儲存當前考卷的 ID
 
     // 建立一個字母對照表，確保 0->A, 1->B, 2->C, 3->D
@@ -103,10 +103,8 @@
             let query = mySupabase.from('quizzes').select('*');
 
             if (urlQuizId) {
-                // 如果網址有帶 ID，就精準撈取那張考卷
                 query = query.eq('id', urlQuizId);
             } else {
-                // 如果沒有帶 ID，才撈最新的一張作備案
                 query = query.order('created_at', { ascending: false }).limit(1);
             }
 
@@ -122,56 +120,122 @@
             currentQuizId = quizData.id; // 記錄本張考卷 ID
             document.getElementById('quizTitle').innerText = `📄 考卷：${quizData.quiz_title || '未命名考卷'}`;
             
-            let questionsArray = typeof quizData.questions === 'string' ? JSON.parse(quizData.questions) : quizData.questions;
+            questionsArray = typeof quizData.questions === 'string' ? JSON.parse(quizData.questions) : quizData.questions;
             const container = document.getElementById('quizContainer');
-            container.innerHTML = ''; 
-            
-            questionsArray.forEach((q, qIndex) => {
-                // ⭐ 強制轉換正確答案為去空格的大寫字母 (如 "A")
-                const finalRightAns = q.answer.trim().toUpperCase();
-                correctAnswers.push({ index: qIndex, answer: finalRightAns });
+            container.innerHTML = ''; // 清空加載字樣
 
+            // 渲染考題到前端畫面
+            questionsArray.forEach((q, idx) => {
                 let optionsHtml = '';
                 q.options.forEach((opt, optIdx) => {
-                    // ⭐ 修正核心：不管後端傳什麼，我們依據選項的順序 (0,1,2,3) 強制賦予 A, B, C, D
-                    const optLetter = letterMap[optIdx] || 'A'; 
-                    
-                    // 為了美觀，如果 AI 吐出來的選項本身沒有帶 "A."，我們在網頁畫面上幫它加上去顯示
-                    const showText = opt.trim().toUpperCase().startsWith(optLetter) ? opt : `${optLetter}. ${opt}`;
-
+                    const letter = letterMap[optIdx] || 'A';
+                    // 防禦型邏輯：如果 Gemini 給的選項已經自己帶了 "A."，就直接呈現，否則幫它補上
+                    const showText = opt.trim().toUpperCase().startsWith(letter) ? opt : `${letter}. ${opt}`;
                     optionsHtml += `
-                        <label class="option-label" data-q="${qIndex}" data-opt="${optLetter}">
-                            <input type="radio" name="q_${qIndex}" value="${optLetter}" required>
-                            ${showText}
+                        <label class="option-label">
+                            <input type="radio" name="q_${idx}" value="${letter}">
+                            <span>${showText}</span>
                         </label>
                     `;
                 });
 
                 container.innerHTML += `
-                    <div class="question-block" id="qBlock_${qIndex}">
-                        <div class="question-text">Q${qIndex + 1}. ${q.question}</div>
-                        <div class="options-group">
-                            ${optionsHtml}
-                        </div>
-                        <div class="explanation-box" id="explain_${qIndex}">
-                            <strong>💡 核心解析：</strong>${q.explanation || '無解析。'}
-                        </div>
+                    <div class="quiz-card" id="card_${idx}">
+                        <div class="question-title">${idx + 1}. ${q.question}</div>
+                        <div class="options-container">${optionsHtml}</div>
+                        <div class="feedback-box" id="feedback_${idx}" style="display:none;"></div>
                     </div>
                 `;
             });
 
-            document.getElementById('submitBtn').style.display = 'block';
+            // 補上提交按鈕與即時排行榜區塊（防禦防呆）
+            if (!document.getElementById('submitArea')) {
+                const mainContainer = document.querySelector('.container');
+                mainContainer.innerHTML += `
+                    <div id="submitArea" style="margin-top: 30px; text-align: center;">
+                        <input type="text" id="userName" placeholder="請輸入您的職稱與姓名 (例: 陳大明 醫師)" style="padding: 12px; width: 80%; max-width: 400px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 16px; margin-bottom: 15px;"><br>
+                        <button onclick="submitQuiz()" style="background: #1e40af; color: white; border: none; padding: 14px 35px; font-size: 16px; border-radius: 8px; font-weight: 600; cursor: pointer;">確認交卷</button>
+                    </div>
+                    <div id="rankArea" style="margin-top: 40px; display:none;">
+                        <h3 style="color:#0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">🏆 本期晨會即時排行榜</h3>
+                        <div id="rankList"></div>
+                    </div>
+                `;
+            }
 
         } catch (err) {
             console.error(err);
-            document.getElementById('quizContainer').innerHTML = `<div class="loading" style="color:red;">❌ 載入失敗: ${err.message}</div>`;
+            document.getElementById('quizContainer').innerHTML = `<div class="loading" style="color:red;">❌ 讀取考卷失敗: ${err.message}</div>`;
         }
     }
 
-    // ⚡ 撈取排行榜並畫在網頁上的函數
-    async function fetchLeaderboard() {
+    async function submitQuiz() {
+        const userName = document.getElementById('userName').value.trim();
+        if (!userName) {
+            alert('請填寫姓名以利統計晨會學分喔！');
+            return;
+        }
+
+        let correctCount = 0;
+        let wrongQuestionsArray = []; // 🔥 用來打包錯題的陣列
+
+        // 檢查每一題的答案
+        questionsArray.forEach((q, idx) => {
+            const selectedOpt = document.querySelector(`input[name="q_${idx}"]:checked`);
+            const userAnswer = selectedOpt ? selectedOpt.value : "";
+            const correctAnswer = q.answer.trim().toUpperCase();
+
+            const feedbackBox = document.getElementById(`feedback_${idx}`);
+            feedbackBox.style.display = "block";
+
+            if (userAnswer === correctAnswer) {
+                correctCount++;
+                feedbackBox.innerHTML = `<span style="color:#15803d; font-weight:600;">✅ 答對了！</span><br><span style="color:#64748b; font-size:14px;">💡 解析：${q.explanation || '無'}</span>`;
+                feedbackBox.style.background = "#dcfce7";
+            } else {
+                // 🔥 只要答錯（包含沒寫），就把題號記下來！例如第 1 題答錯就記錄 "Q1"
+                wrongQuestionsArray.push(`Q${idx + 1}`);
+                feedbackBox.innerHTML = `<span style="color:#b91c1c; font-weight:600;">❌ 答錯囉！正確答案是 (${correctAnswer})</span><br><span style="color:#64748b; font-size:14px;">💡 解析：${q.explanation || '無'}</span>`;
+                feedbackBox.style.background = "#fee2e2";
+            }
+        });
+
+        // 計算完美的整數分數（100分制）
+        const finalScore = Math.round((correctCount / questionsArray.length) * 100);
+        
+        // 將錯題陣列轉換成逗號隔開的字串，例如 "Q1, Q3"
+        const wrongQuestionsString = wrongQuestionsArray.join(', ');
+
         try {
-            const { data, error } = await mySupabase
+            // 🚀 送進 Supabase：這次把 wrong_questions 欄位同步上傳！
+            const { error: insertError } = await mySupabase
+                .from('quiz_results')
+                .insert([
+                    { 
+                        user_name: userName, 
+                        quiz_id: currentQuizId, 
+                        score: finalScore,
+                        wrong_questions: wrongQuestionsString // 👈 完美連線！
+                    }
+                ]);
+
+            if (insertError) throw insertError;
+
+            alert(`交卷成功！您的分數為：${finalScore} 分`);
+            document.getElementById('submitArea').style.display = 'none'; // 隱藏提交區
+
+            // 撈取最新排行榜更新到下方
+            loadRankings();
+
+        } catch (err) {
+            console.error(err);
+            alert(`成績上傳失敗，請通知管理員：${err.message}`);
+        }
+    }
+
+    async function loadRankings() {
+        try {
+            const { data: rankData, error } = await mySupabase
                 .from('quiz_results')
                 .select('*')
                 .eq('quiz_id', currentQuizId)
@@ -180,92 +244,28 @@
 
             if (error) throw error;
 
-            const listContainer = document.getElementById('leaderboardList');
-            listContainer.innerHTML = '';
+            const rankArea = document.getElementById('rankArea');
+            const rankList = document.getElementById('rankList');
+            rankArea.style.display = 'block';
+            rankList.innerHTML = '';
 
-            if(!data || data.length === 0) {
-                listContainer.innerHTML = '<div>目前尚無人挑戰，快當第一個！</div>';
-                return;
-            }
-
-            data.forEach((row, idx) => {
-                const rank = idx + 1;
-                let rankClass = rank === 1 ? 'rank-1' : '';
-                let medal = rank === 1 ? '🥇 ' : rank === 2 ? '🥈 ' : rank === 3 ? '🥉 ' : `第 ${rank} 名 `;
-                
-                listContainer.innerHTML += `
-                    <div class="leaderboard-row ${rankClass}">
-                        <span>${medal}${row.user_name}</span>
-                        <strong>${row.score} 分</strong>
+            const medals = ['🥇', '🥈', '🥉'];
+            rankData.forEach((row, index) => {
+                const medal = medals[index] || `🔹 [第 ${index + 1} 名]`;
+                rankList.innerHTML += `
+                    <div style="padding: 10px; background: white; margin-bottom: 5px; border-radius: 6px; display: flex; justify-content: space-between; border: 1px solid #e2e8f0;">
+                        <span>${medal} ${row.user_name}</span>
+                        <span style="font-weight:700; color:#1e40af;">${row.score} 分</span>
                     </div>
                 `;
             });
-
-            document.getElementById('leaderboardBox').style.display = 'block';
-
         } catch (err) {
-            console.error("抓取排行榜失敗:", err.message);
+            console.error(err);
         }
     }
 
-    // 監聽交卷按鈕
-    document.getElementById('quizForm').addEventListener('submit', async function(e) {
-        e.preventDefault(); 
-        
-        const userName = document.getElementById('userNameInput').value.trim();
-        let correctCount = 0; // 改用計算「答對題數」來防範浮點數四捨五入落差
-        const totalQuestions = correctAnswers.length;
-
-        // 1. 批改答案與上色
-        correctAnswers.forEach((item) => {
-            const qIndex = item.index;
-            const rightAns = item.answer; 
-            const selectedRadio = document.querySelector(`input[name="q_${qIndex}"]:checked`);
-            const userAns = selectedRadio ? selectedRadio.value : '';
-            const allOptions = document.querySelectorAll(`.option-label[data-q="${qIndex}"]`);
-            
-            allOptions.forEach(label => {
-                const labelOpt = label.getAttribute('data-opt');
-                if (labelOpt === rightAns) label.classList.add('correct');
-                if (labelOpt === userAns && userAns !== rightAns) label.classList.add('wrong');
-                label.style.pointerEvents = 'none';
-                label.querySelector('input').disabled = true;
-            });
-
-            if (userAns === rightAns) {
-                correctCount += 1;
-            }
-            document.getElementById(`explain_${qIndex}`).style.display = 'block';
-        });
-
-        // ⭐ 修正計分法：用 (答對題數 / 總題數) * 100，算出精準的 100 分制分數
-        const finalScore = Math.round((correctCount / totalQuestions) * 100);
-
-        // 2. ⚡ 將這個人的名字與分數上傳到 Supabase 資料庫
-        try {
-            const { error } = await mySupabase
-                .from('quiz_results')
-                .insert([
-                    { user_name: userName, quiz_id: currentQuizId, score: finalScore }
-                ]);
-
-            if (error) throw error;
-            console.log("分數上傳成功！");
-        } catch (uploadError) {
-            alert("數據同步失敗，但仍會顯示本地分數：" + uploadError.message);
-        }
-
-        // 3. 本地顯示分數並當場抓取最新排行榜
-        document.getElementById('scoreDisplay').innerText = `${finalScore} / 100`;
-        document.getElementById('resultCard').style.display = 'block';
-        document.getElementById('submitBtn').style.display = 'none'; 
-        
-        await fetchLeaderboard();
-        
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-
-    loadQuiz();
+    // 當網頁載入時自動執行
+    window.onload = loadQuiz;
 </script>
 
 </body>
