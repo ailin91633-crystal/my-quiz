@@ -96,7 +96,7 @@
 
     async function loadQuiz() {
         try {
-            // 🌟 核心修正：從網址列抓取 ?id= 後面的參數
+            // 1. 從網址列抓取 ?id= 後面的參數
             const urlParams = new URLSearchParams(window.location.search);
             const urlQuizId = urlParams.get('id');
 
@@ -129,7 +129,6 @@
                 let optionsHtml = '';
                 q.options.forEach((opt, optIdx) => {
                     const letter = letterMap[optIdx] || 'A';
-                    // 防禦型邏輯：如果 Gemini 給的選項已經自己帶了 "A."，就直接呈現，否則幫它補上
                     const showText = opt.trim().toUpperCase().startsWith(letter) ? opt : `${letter}. ${opt}`;
                     optionsHtml += `
                         <label class="option-label">
@@ -148,25 +147,61 @@
                 `;
             });
 
-            // 補上提交按鈕與即時排行榜區塊（防禦防呆）
-            if (!document.getElementById('submitArea')) {
-                const mainContainer = document.querySelector('.container');
-                mainContainer.innerHTML += `
-                    <div id="submitArea" style="margin-top: 30px; text-align: center;">
-                        <input type="text" id="userName" placeholder="請輸入您的職稱與姓名 (例: 陳大明 醫師)" style="padding: 12px; width: 80%; max-width: 400px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 16px; margin-bottom: 15px;"><br>
-                        <button onclick="submitQuiz()" style="background: #1e40af; color: white; border: none; padding: 14px 35px; font-size: 16px; border-radius: 8px; font-weight: 600; cursor: pointer;">確認交卷</button>
-                    </div>
-                    <div id="rankArea" style="margin-top: 40px; display:none;">
-                        <h3 style="color:#0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">🏆 本期晨會即時排行榜</h3>
-                        <div id="rankList"></div>
-                    </div>
-                `;
-            }
+            // 🌟 修正點：清除任何重複產生的舊區域，並在最下方初始化一個乾淨、隱藏的提交與排行區塊
+            const existingSubmit = document.getElementById('dynamicSubmitSection');
+            if (existingSubmit) existingSubmit.remove();
+
+            const mainContainer = document.querySelector('.container');
+            const submitSection = document.createElement('div');
+            submitSection.id = 'dynamicSubmitSection';
+            submitSection.style.marginTop = '30px';
+            
+            // 預先塞入結構，但一開始先「隱藏」姓名與確認鍵
+            submitSection.innerHTML = `
+                <div id="quizActionArea" style="text-align: center; margin-bottom: 20px;">
+                    <button onclick="revealSubmitForm()" id="checkAnswersBtn" style="background: #2563eb; color: white; border: none; padding: 14px 35px; font-size: 16px; border-radius: 8px; font-weight: 600; cursor: pointer;">回答完畢，計算分數</button>
+                </div>
+                
+                <div id="finalSubmitForm" style="display: none; text-align: center; background: #f1f5f9; padding: 25px; border-radius: 12px; border: 1px solid #cbd5e1; margin-bottom: 30px;">
+                    <h3 style="margin-top:0; color:#1e3a8a;">🎉 太棒了！您已完成所有題目</h3>
+                    <p style="color:#475569; font-size:14px; margin-bottom:15px;">請在下方輸入您的姓名，將成績同步至晨會即時排行榜：</p>
+                    <input type="text" id="userName" placeholder="請輸入您的職稱與姓名 (例: 陳大明 醫師)" style="padding: 12px; width: 85%; max-width: 400px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 16px; margin-bottom: 15px;"><br>
+                    <button onclick="submitQuiz()" style="background: #1e40af; color: white; border: none; padding: 14px 45px; font-size: 16px; border-radius: 8px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(30,64,175,0.3);">確認交卷並看解析</button>
+                </div>
+
+                <div id="rankArea" style="margin-top: 40px; display:none;">
+                    <h3 style="color:#0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">🏆 本期晨會即時排行榜</h3>
+                    <div id="rankList"></div>
+                </div>
+            `;
+            mainContainer.appendChild(submitSection);
 
         } catch (err) {
             console.error(err);
             document.getElementById('quizContainer').innerHTML = `<div class="loading" style="color:red;">❌ 讀取考卷失敗: ${err.message}</div>`;
         }
+    }
+
+    // 🌟 點擊「回答完畢，計算分數」後，才會觸發這個顯示姓名輸入框的動作
+    function revealSubmitForm() {
+        // 檢查是不是每題都有選（防呆）
+        let allAnswered = true;
+        questionsArray.forEach((q, idx) => {
+            const checked = document.querySelector(`input[name="q_${idx}"]:checked`);
+            if (!checked) allAnswered = false;
+        });
+
+        if (!allAnswered) {
+            const confirmGap = confirm('偵測到還有題目尚未作答，確定要現在結算分數嗎？');
+            if (!confirmGap) return;
+        }
+
+        // 隱藏第一階段的按鈕，秀出姓名輸入框
+        document.getElementById('quizActionArea').style.display = 'none';
+        document.getElementById('finalSubmitForm').style.display = 'block';
+        
+        // 幫忙把網頁平滑捲動到輸入框，同仁體驗更好
+        document.getElementById('finalSubmitForm').scrollIntoView({ behavior: 'smooth' });
     }
 
     async function submitQuiz() {
@@ -177,9 +212,9 @@
         }
 
         let correctCount = 0;
-        let wrongQuestionsArray = []; // 🔥 用來打包錯題的陣列
+        let wrongQuestionsArray = []; 
 
-        // 檢查每一題的答案
+        // 檢查每一題的答案並當場秀出單題正誤回饋
         questionsArray.forEach((q, idx) => {
             const selectedOpt = document.querySelector(`input[name="q_${idx}"]:checked`);
             const userAnswer = selectedOpt ? selectedOpt.value : "";
@@ -193,21 +228,17 @@
                 feedbackBox.innerHTML = `<span style="color:#15803d; font-weight:600;">✅ 答對了！</span><br><span style="color:#64748b; font-size:14px;">💡 解析：${q.explanation || '無'}</span>`;
                 feedbackBox.style.background = "#dcfce7";
             } else {
-                // 🔥 只要答錯（包含沒寫），就把題號記下來！例如第 1 題答錯就記錄 "Q1"
                 wrongQuestionsArray.push(`Q${idx + 1}`);
                 feedbackBox.innerHTML = `<span style="color:#b91c1c; font-weight:600;">❌ 答錯囉！正確答案是 (${correctAnswer})</span><br><span style="color:#64748b; font-size:14px;">💡 解析：${q.explanation || '無'}</span>`;
                 feedbackBox.style.background = "#fee2e2";
             }
         });
 
-        // 計算完美的整數分數（100分制）
         const finalScore = Math.round((correctCount / questionsArray.length) * 100);
-        
-        // 將錯題陣列轉換成逗號隔開的字串，例如 "Q1, Q3"
         const wrongQuestionsString = wrongQuestionsArray.join(', ');
 
         try {
-            // 🚀 送進 Supabase：這次把 wrong_questions 欄位同步上傳！
+            // 送進 Supabase
             const { error: insertError } = await mySupabase
                 .from('quiz_results')
                 .insert([
@@ -215,17 +246,20 @@
                         user_name: userName, 
                         quiz_id: currentQuizId, 
                         score: finalScore,
-                        wrong_questions: wrongQuestionsString // 👈 完美連線！
+                        wrong_questions: wrongQuestionsString
                     }
                 ]);
 
             if (insertError) throw insertError;
 
             alert(`交卷成功！您的分數為：${finalScore} 分`);
-            document.getElementById('submitArea').style.display = 'none'; // 隱藏提交區
+            document.getElementById('finalSubmitForm').style.display = 'none'; // 隱藏交卷區
 
             // 撈取最新排行榜更新到下方
             loadRankings();
+
+            // 捲動回最上方讓同仁看自己的對錯報告
+            window.scrollTo({ top: 0, behavior: 'smooth' });
 
         } catch (err) {
             console.error(err);
