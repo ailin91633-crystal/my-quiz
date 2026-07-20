@@ -2,206 +2,115 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📊 講師投影幕 - 晨會盲點與錯題即時排行</title>
+    <title>🏆 晨會測驗 - 發布者管理後台</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        :root { --primary: #0f172a; --accent: #ef4444; --bg: #f8fafc; --card-bg: #ffffff; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg); color: #334155; padding: 30px; margin: 0; }
-        .container { max-width: 900px; margin: 0 auto; }
-        .header { text-align: center; margin-bottom: 40px; background: var(--primary); color: white; padding: 30px; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
-        h1 { margin: 0 0 10px 0; font-size: 28px; letter-spacing: 1px; }
-        .quiz-title { font-size: 18px; color: #94a3b8; font-weight: 500; }
-        
-        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
-        .stat-card { background: var(--card-bg); padding: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border: 1px solid #e2e8f0; }
-        .stat-value { font-size: 36px; font-weight: 800; color: #1e40af; }
-        .stat-label { font-size: 14px; color: #64748b; margin-top: 5px; }
-
-        .rank-title { font-size: 22px; font-weight: 700; color: var(--primary); margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
-        
-        .wrong-item { background: var(--card-bg); border: 1px solid #e2e8f0; border-radius: 12px; padding: 25px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02); position: relative; overflow: hidden; }
-        .wrong-item.high-alert { border-left: 6px solid var(--accent); }
-        
-        .badge-rank { position: absolute; top: 20px; right: 20px; background: #fee2e2; color: #991b1b; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 14px; }
-        .high-alert .badge-rank { background: #fef2f2; color: var(--accent); border: 1px solid #fca5a5; }
-
-        .question-text { font-size: 18px; font-weight: 700; color: #1e293b; max-width: 80%; line-height: 1.5; margin-bottom: 15px; }
-        
-        .option-box { background: #f1f5f9; padding: 10px 15px; border-radius: 6px; margin-bottom: 8px; font-size: 15px; }
-        .option-box.is-correct { background: #dcfce7; color: #15803d; font-weight: 600; border: 1px solid #bbf7d0; }
-        
-        .explanation-box { margin-top: 20px; padding: 15px; background: #fffbeb; border-radius: 8px; border: 1px solid #fef08a; color: #713f12; font-size: 15px; line-height: 1.6; }
-        
-        .loading { text-align: center; color: #64748b; padding: 60px; font-size: 18px; font-style: italic; }
-        .no-data { text-align: center; padding: 40px; background: white; border-radius: 12px; color: #94a3b8; }
+        body { font-family: system-ui, sans-serif; background: #f8fafc; padding: 20px; color: #334155; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .btn { padding: 10px 20px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; margin-right: 10px; }
+        .btn-pre { background: #f59e0b; color: white; }
+        .btn-post { background: #10b981; color: white; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #e2e8f0; padding: 12px; text-align: left; }
+        th { background: #f1f5f9; }
+        .badge-up { background: #dcfce7; color: #15803d; padding: 3px 8px; border-radius: 12px; font-weight: bold; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <div class="header">
-        <h1>📊 🏥 醫學晨會投影幕 - 盲點題型排行</h1>
-        <div id="quizTitle" class="quiz-title">正在讀取最新考卷數據...</div>
-    </div>
-
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div id="totalParticipants" class="stat-value">0</div>
-            <div class="stat-label">👥 已作答同仁總數</div>
-        </div>
-        <div class="stat-card">
-            <div id="averageScore" class="stat-value">0 / 100</div>
-            <div class="stat-label">📈 全科平均分數</div>
-        </div>
-    </div>
-
-    <div class="rank-title">❌ 全體同仁「出錯機率最高」題目排行</div>
+<div style="max-width: 900px; margin: 0 auto;">
+    <h2>⚙️ 晨會 AI 測驗 - 主持人/管理員控制台</h2>
     
-    <div id="wrongRankContainer">
-        <div class="loading">正在連線至雲端，進行地毯式錯題加總統計...</div>
+    <div class="card">
+        <h3>📍 當前考卷狀態控制</h3>
+        <p>目前考卷：<strong id="currentQuizTitle">載入中...</strong></p>
+        <p>當前階段：<span id="currentStatus" style="font-weight:bold; font-size:18px;">--</span></p>
+        <div>
+            <button class="btn btn-pre" onclick="updateStatus('pre')">🟡 切換為【前測階段】(無詳解)</button>
+            <button class="btn btn-post" onclick="updateStatus('post')">🟢 切換為【後測階段】(開放詳解)</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>📊 同仁前後測學習成效對比 (Learning Gain)</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>姓名</th>
+                    <th>前測得分</th>
+                    <th>後測得分</th>
+                    <th>進步幅度</th>
+                </tr>
+            </thead>
+            <tbody id="analysisTable">
+                <tr><td colspan="4">正在計算分數中...</td></tr>
+            </tbody>
+        </table>
     </div>
 </div>
 
 <script>
-    // 🔒 保持與主頁一致的 Supabase 密鑰
     const SUPABASE_URL = "https://fileybakrcrpujajioqj.supabase.co"; 
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpbGV5YmFrcmNycHVqYWppb3FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyOTIwMDEsImV4cCI6MjA5NDg2ODAwMX0.JmbCZJHFDdZ22JCx74kJgjZmpo2U6ON9cMoD0lc90pw";
-
     const mySupabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    const letterMap = ['A', 'B', 'C', 'D', 'E', 'F'];
+    let activeQuizId = "";
 
-    async function initAdminDashboard() {
-        try {
-            // 🌟 關鍵改造點 1：從網址解鎖 ID 參數 (?id=xxxx)
-            const urlParams = new URLSearchParams(window.location.search);
-            const urlQuizId = urlParams.get('id');
+    async function loadAdminData() {
+        // 抓最新考卷
+        const { data: quizzes } = await mySupabase.from('quizzes').select('*').order('created_at', { ascending: false }).limit(1);
+        if (!quizzes || quizzes.length === 0) return;
 
-            let quizQuery = mySupabase.from('quizzes').select('*');
+        const quiz = quizzes[0];
+        activeQuizId = quiz.id;
+        document.getElementById('currentQuizTitle').innerText = quiz.quiz_title || '未命名考卷';
+        
+        const statusMap = { 'pre': '🟡 前測中 (同仁看不到詳解)', 'post': '🟢 後測中 (同仁可看完整解析)' };
+        document.getElementById('currentStatus').innerText = statusMap[quiz.status] || quiz.status;
 
-            if (urlQuizId) {
-                // 如果網址有帶 id，精準抓取舊考卷
-                quizQuery = quizQuery.eq('id', urlQuizId);
-            } else {
-                // 如果沒有帶 id，預設撈取最新一筆
-                quizQuery = quizQuery.order('created_at', { ascending: false }).limit(1);
+        // 撈取成績進行比對
+        const { data: results } = await mySupabase.from('quiz_results').select('*').eq('quiz_id', activeQuizId);
+        
+        // 整理個人數據
+        const userMap = {};
+        results.forEach(r => {
+            if (!userMap[r.user_name]) userMap[r.user_name] = { pre: '-', post: '-' };
+            if (r.test_type === 'pre') userMap[r.user_name].pre = r.score;
+            if (r.test_type === 'post') userMap[r.user_name].post = r.score;
+        });
+
+        const tbody = document.getElementById('analysisTable');
+        tbody.innerHTML = '';
+
+        Object.keys(userMap).forEach(name => {
+            const pre = userMap[name].pre;
+            const post = userMap[name].post;
+            let diffHtml = '-';
+
+            if (pre !== '-' && post !== '-') {
+                const diff = post - pre;
+                const sign = diff >= 0 ? '+' : '';
+                diffHtml = `<span class="badge-up">${sign}${diff} 分</span>`;
             }
 
-            const { data: quizDataList, error: quizError } = await quizQuery;
-
-            if (quizError) throw quizError;
-            if (!quizDataList || quizDataList.length === 0) {
-                document.getElementById('wrongRankContainer').innerHTML = '<div class="no-data">ℹ️ 找不到對應的考卷資料。</div>';
-                return;
-            }
-
-            const quiz = quizDataList[0];
-            document.getElementById('quizTitle').innerText = `📄 當前分析考卷：${quiz.quiz_title || '未命名考卷'}`;
-            let questionsArray = typeof quiz.questions === 'string' ? JSON.parse(quiz.questions) : quiz.questions;
-
-            // 2. 撈取「該張特定考卷」的所有同仁作答結果
-            const { data: results, error: resultsError } = await mySupabase
-                .from('quiz_results')
-                .select('*')
-                .eq('quiz_id', quiz.id);
-
-            if (resultsError) throw resultsError;
-
-            // 如果還沒有人寫考卷
-            if (!results || results.length === 0) {
-                document.getElementById('totalParticipants').innerText = "0 人";
-                document.getElementById('averageScore').innerText = "-- 分";
-                document.getElementById('wrongRankContainer').innerHTML = '<div class="no-data">⏳ 目前尚無同仁交卷，等待數據中...</div>';
-                return;
-            }
-
-            // 3. 計算基本大盤數據
-            const totalPeople = results.length;
-            const sumScore = results.reduce((acc, row) => acc + (row.score || 0), 0);
-            const avgScore = Math.round(sumScore / totalPeople);
-
-            document.getElementById('totalParticipants').innerText = `${totalPeople} 人`;
-            document.getElementById('averageScore').innerText = `${avgScore} / 100 分`;
-
-            // 4. 🔥 核心算法：地毯式加總每一題的答錯人數
-            let wrongCounts = questionsArray.map(() => 0);
-
-            results.forEach(row => {
-                if (row.wrong_questions) {
-                    const wrongItems = row.wrong_questions.split(','); 
-                    wrongItems.forEach(item => {
-                        const cleanItem = item.trim(); 
-                        if (cleanItem.startsWith('Q')) {
-                            const qNum = parseInt(cleanItem.replace('Q', ''), 10); 
-                            const qIndex = qNum - 1; 
-                            if (qIndex >= 0 && qIndex < wrongCounts.length) {
-                                wrongCounts[qIndex] += 1; 
-                            }
-                        }
-                    });
-                }
-            });
-
-            // 5. 將統計結果與原始題目綁定，並進行由高到低的「降序排序」
-            let rankedQuestions = questionsArray.map((q, idx) => {
-                const count = wrongCounts[idx];
-                const rate = Math.round((count / totalPeople) * 100);
-                return {
-                    originalNum: idx + 1,
-                    wrongCount: count,
-                    wrongRate: rate,
-                    questionData: q
-                };
-            });
-
-            // 依據答錯人數排序 (錯最多的在最上面)
-            rankedQuestions.sort((a, b) => b.wrongCount - a.wrongCount);
-
-            // 6. 渲染排行榜到大螢幕上
-            const rankContainer = document.getElementById('wrongRankContainer');
-            rankContainer.innerHTML = '';
-
-            rankedQuestions.forEach((item, rankIdx) => {
-                const isHighAlert = item.wrongRate >= 50 ? 'high-alert' : ''; 
-                const rightAnsLetter = item.questionData.answer.trim().toUpperCase();
-
-                let optionsHtml = '';
-                item.questionData.options.forEach((opt, optIdx) => {
-                    const currentLetter = letterMap[optIdx] || 'A';
-                    const isCorrect = currentLetter === rightAnsLetter ? 'is-correct' : '';
-                    const showText = opt.trim().toUpperCase().startsWith(currentLetter) ? opt : `${currentLetter}. ${opt}`;
-                    optionsHtml += `<div class="option-box ${isCorrect}">${showText}</div>`;
-                });
-
-                rankContainer.innerHTML += `
-                    <div class="wrong-item ${isHighAlert}">
-                        <div class="badge-rank">
-                            ⚠️ 答錯率：${item.wrongRate}% (${item.wrongCount}/${totalPeople}人)
-                        </div>
-                        <div class="question-text">
-                            【盲點 Top ${rankIdx + 1}】原卷第 ${item.originalNum} 題：<br>
-                            ${item.questionData.question}
-                        </div>
-                        <div class="options-group">
-                            ${optionsHtml}
-                        </div>
-                        <div class="explanation-box">
-                            <strong>🎯 晨會重點講評解析：</strong><br>
-                            ${item.questionData.explanation || '無解析。'}
-                        </div>
-                    </div>
-                `;
-            });
-
-        } catch (err) {
-            console.error(err);
-            document.getElementById('wrongRankContainer').innerHTML = `<div class="no-data" style="color:red;">❌ 數據統計失敗: ${err.message}</div>`;
-        }
+            tbody.innerHTML += `
+                <tr>
+                    <td><strong>${name}</strong></td>
+                    <td>${pre !== '-' ? pre + ' 分' : '<span style="color:#94a3b8">未作答</span>'}</td>
+                    <td>${post !== '-' ? post + ' 分' : '<span style="color:#94a3b8">未作答</span>'}</td>
+                    <td>${diffHtml}</td>
+                </tr>
+            `;
+        });
     }
 
-    // 初始化載入
-    initAdminDashboard();
-</script>
+    async function updateStatus(newStatus) {
+        if (!activeQuizId) return;
+        await mySupabase.from('quizzes').update({ status: newStatus }).eq('id', activeQuizId);
+        alert(`已成功切換為【${newStatus === 'pre' ? '前測' : '後測'}】階段！`);
+        loadAdminData();
+    }
 
+    window.onload = loadAdminData;
+</script>
 </body>
 </html>
