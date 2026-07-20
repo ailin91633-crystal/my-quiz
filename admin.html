@@ -56,30 +56,54 @@
     let activeQuizId = "";
 
     async function loadAdminData() {
-        // 抓最新考卷
-        const { data: quizzes } = await mySupabase.from('quizzes').select('*').order('created_at', { ascending: false }).limit(1);
-        if (!quizzes || quizzes.length === 0) return;
+        // 🌟 關鍵：先讀取網址上的 ?id=xxx 參數
+        const urlParams = new URLSearchParams(window.location.search);
+        activeQuizId = urlParams.get('id');
+
+        let query = mySupabase.from('quizzes').select('*');
+        if (activeQuizId) {
+            query = query.eq('id', activeQuizId);
+        } else {
+            // 若網址沒帶 id，預設抓最新一張
+            query = query.order('created_at', { ascending: false }).limit(1);
+        }
+
+        const { data: quizzes, error } = await query;
+        if (error || !quizzes || quizzes.length === 0) {
+            document.getElementById('currentQuizTitle').innerText = '找不到該考卷資料';
+            return;
+        }
 
         const quiz = quizzes[0];
-        activeQuizId = quiz.id;
+        activeQuizId = quiz.id; // 鎖定目前考卷 ID
+        
         document.getElementById('currentQuizTitle').innerText = quiz.quiz_title || '未命名考卷';
         
-        const statusMap = { 'pre': '🟡 前測中 (同仁看不到詳解)', 'post': '🟢 後測中 (同仁可看完整解析)' };
+        const statusMap = { 
+            'pre': '🟡 前測中 (同仁考完不顯示詳解)', 
+            'post': '🟢 後測中 (同仁考完顯示完整解析)' 
+        };
         document.getElementById('currentStatus').innerText = statusMap[quiz.status] || quiz.status;
 
         // 撈取成績進行比對
         const { data: results } = await mySupabase.from('quiz_results').select('*').eq('quiz_id', activeQuizId);
         
-        // 整理個人數據
         const userMap = {};
-        results.forEach(r => {
-            if (!userMap[r.user_name]) userMap[r.user_name] = { pre: '-', post: '-' };
-            if (r.test_type === 'pre') userMap[r.user_name].pre = r.score;
-            if (r.test_type === 'post') userMap[r.user_name].post = r.score;
-        });
+        if (results) {
+            results.forEach(r => {
+                if (!userMap[r.user_name]) userMap[r.user_name] = { pre: '-', post: '-' };
+                if (r.test_type === 'pre') userMap[r.user_name].pre = r.score;
+                if (r.test_type === 'post') userMap[r.user_name].post = r.score;
+            });
+        }
 
         const tbody = document.getElementById('analysisTable');
         tbody.innerHTML = '';
+
+        if (Object.keys(userMap).length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4">目前尚無作答紀錄</td></tr>';
+            return;
+        }
 
         Object.keys(userMap).forEach(name => {
             const pre = userMap[name].pre;
@@ -104,10 +128,23 @@
     }
 
     async function updateStatus(newStatus) {
-        if (!activeQuizId) return;
-        await mySupabase.from('quizzes').update({ status: newStatus }).eq('id', activeQuizId);
-        alert(`已成功切換為【${newStatus === 'pre' ? '前測' : '後測'}】階段！`);
-        loadAdminData();
+        if (!activeQuizId) {
+            alert("找不到考卷 ID，無法更新狀態！");
+            return;
+        }
+        
+        // 🌟 強制將資料庫中的 status 更新為 pre 或 post
+        const { error } = await mySupabase
+            .from('quizzes')
+            .update({ status: newStatus })
+            .eq('id', activeQuizId);
+
+        if (error) {
+            alert(`修改失敗：${error.message}`);
+        } else {
+            alert(`已成功將狀態切換為【${newStatus === 'pre' ? '前測' : '後測'}】！`);
+            loadAdminData(); // 重新整理頁面資料
+        }
     }
 
     window.onload = loadAdminData;
