@@ -3,17 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🏥 醫院晨會 - AI 線上測驗與即時排行系統</title>
+    <title>🏥 醫院晨會 - 線上測驗系統</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        :root { --primary: #1e3a8a; --primary-light: #eff6ff; --success: #10b981; --error: #ef4444; --amber: #f59e0b; }
+        :root { --primary: #1e3a8a; --primary-light: #eff6ff; --success: #10b981; --error: #ef4444; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f3f4f6; color: #1f2937; padding: 20px; margin: 0; }
         .container { max-width: 650px; margin: 30px auto; background: white; padding: 30px; border-radius: 16px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); }
         .header { text-align: center; border-bottom: 2px solid #f3f4f6; padding-bottom: 20px; margin-bottom: 25px; }
         h1 { color: var(--primary); margin: 0 0 10px 0; font-size: 24px; }
-        .quiz-title { font-weight: bold; color: #4b5563; font-size: 16px; background: var(--primary-light); padding: 10px 15px; border-radius: 8px; display: inline-block; }
+        .quiz-tag { font-weight: bold; font-size: 14px; padding: 4px 12px; border-radius: 20px; display: inline-block; margin-bottom: 8px; }
+        .tag-pre { background: #fef3c7; color: #92400e; }
+        .tag-post { background: #d1fae5; color: #065f46; }
+        .quiz-title { font-weight: bold; color: #4b5563; font-size: 16px; background: var(--primary-light); padding: 10px 15px; border-radius: 8px; display: block; }
         
-        /* 姓名輸入區樣式 */
         .user-box { background: #f8fafc; border: 2px dashed #cbd5e1; padding: 20px; border-radius: 12px; margin-bottom: 25px; text-align: center; }
         .user-box input { padding: 10px 15px; font-size: 16px; border: 1px solid #cbd5e1; border-radius: 6px; width: 60%; max-width: 250px; text-align: center; }
         
@@ -21,21 +23,14 @@
         .question-title { font-size: 17px; font-weight: 600; margin-bottom: 15px; color: #111827; line-height: 1.5; }
         
         .option-label { display: block; padding: 12px 15px; margin-bottom: 10px; background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 8px; cursor: pointer; transition: all 0.2s; font-size: 15px; }
-        .option-label:hover { background: #f3f4f6; border-color: #d1d5db; }
+        .option-label:hover { background: #f3f4f6; }
         .option-label input { margin-right: 10px; transform: scale(1.1); }
         
-        /* 回饋區塊樣式 */
         .feedback-box { margin-top: 12px; padding: 12px 15px; border-radius: 8px; font-size: 15px; line-height: 1.5; display: none; }
-        
-        .btn-submit { display: block; width: 100%; background: var(--primary); color: white; border: none; padding: 14px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; transition: background 0.2s; }
-        .btn-submit:hover { background: #172554; }
+        .btn-submit { display: block; width: 100%; background: var(--primary); color: white; border: none; padding: 14px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; }
         
         .result-card { display: none; background: #f0fdf4; border: 2px solid var(--success); padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 25px; }
         .score { font-size: 32px; font-weight: 900; color: var(--success); margin: 10px 0; }
-        
-        /* 排行榜樣式 */
-        .leaderboard { margin-top: 25px; background: #fafafa; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; display: none; }
-        .leaderboard h3 { margin-top: 0; color: var(--primary); border-bottom: 2px solid #e5e7eb; padding-bottom: 10px; }
         .loading { text-align: center; color: #6b7280; padding: 40px; font-style: italic; }
     </style>
 </head>
@@ -44,40 +39,40 @@
 <div class="container">
     <div class="header">
         <h1>🏥 醫學晨會 AI 測驗系統</h1>
+        <div><span id="statusTag" class="quiz-tag">載入中</span></div>
         <div id="quizTitle" class="quiz-title">讀取考卷中...</div>
     </div>
     
+    <!-- 個人成績看板 -->
     <div id="resultCard" class="result-card">
-        <h3>🎉 測驗完成！分數已同步至雲端排行榜！</h3>
-        <div>您的得分</div>
+        <h3 id="resultHeader">🎉 測驗完成！</h3>
+        <div>您的個人得分</div>
         <div id="scoreDisplay" class="score">0 / 100</div>
+        <p id="resultNote" style="color:#475569; font-size:14px; margin-top:5px;"></p>
     </div>
 
+    <!-- 考題呈現區 -->
     <div id="quizContainer">
         <div class="loading">正在連線至資料庫...</div>
     </div>
 </div>
 
 <script>
-    // 🔒 保持與主頁一致的 Supabase 密鑰
     const SUPABASE_URL = "https://fileybakrcrpujajioqj.supabase.co"; 
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpbGV5YmFrcmNycHVqYWppb3FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyOTIwMDEsImV4cCI6MjA5NDg2ODAwMX0.JmbCZJHFDdZ22JCx74kJgjZmpo2U6ON9cMoD0lc90pw";
 
     const mySupabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    let questionsArray = []; // 儲存當前題目資料
-    let currentQuizId = ""; // 用來儲存當前考卷的 ID
-
-    // 建立一個字母對照表，確保 0->A, 1->B, 2->C, 3->D
+    let questionsArray = []; 
+    let currentQuizId = ""; 
+    let quizStatus = "pre"; // 預設為前測 pre
     const letterMap = ['A', 'B', 'C', 'D', 'E', 'F'];
 
     async function loadQuiz() {
         try {
-            // 1. 從網址列抓取 ?id= 後面的參數
             const urlParams = new URLSearchParams(window.location.search);
             const urlQuizId = urlParams.get('id');
 
             let query = mySupabase.from('quizzes').select('*');
-
             if (urlQuizId) {
                 query = query.eq('id', urlQuizId);
             } else {
@@ -93,14 +88,36 @@
             }
 
             const quizData = data[0];
-            currentQuizId = quizData.id; // 記錄本張考卷 ID
+            currentQuizId = quizData.id;
+            quizStatus = quizData.status || 'pre'; // 讀取發布者設定的狀態
+
+            // 設定標籤顯示
+            const statusTag = document.getElementById('statusTag');
+            if (quizStatus === 'pre') {
+                statusTag.innerText = "📍 目前階段：前測 (測驗個人背景認知)";
+                statusTag.className = "quiz-tag tag-pre";
+            } else if (quizStatus === 'post') {
+                statusTag.innerText = "🚀 目前階段：後測 (包含完整解說)";
+                statusTag.className = "quiz-tag tag-post";
+            } else {
+                statusTag.innerText = "🔒 測驗已結束";
+                statusTag.className = "quiz-tag";
+            }
+
             document.getElementById('quizTitle').innerText = `📄 考卷：${quizData.quiz_title || '未命名考卷'}`;
             
-            questionsArray = typeof quizData.questions === 'string' ? JSON.parse(quizData.questions) : quizData.questions;
-            const container = document.getElementById('quizContainer');
-            container.innerHTML = ''; // 清空加載字樣
+            // AI 髒資料自動除錯濾網
+            let rawQuestions = quizData.questions;
+            if (typeof rawQuestions === 'string') {
+                rawQuestions = rawQuestions.replace(/```json/g, '').replace(/```/g, '').trim();
+                questionsArray = JSON.parse(rawQuestions);
+            } else {
+                questionsArray = rawQuestions;
+            }
 
-            // 渲染考題到前端畫面
+            const container = document.getElementById('quizContainer');
+            container.innerHTML = ''; 
+
             questionsArray.forEach((q, idx) => {
                 let optionsHtml = '';
                 q.options.forEach((opt, optIdx) => {
@@ -123,10 +140,7 @@
                 `;
             });
 
-            // 清除並重新建立乾淨的動態交卷/排行榜區塊
-            const existingSubmit = document.getElementById('dynamicSubmitSection');
-            if (existingSubmit) existingSubmit.remove();
-
+            // 動態產生交卷按鈕區
             const mainContainer = document.querySelector('.container');
             const submitSection = document.createElement('div');
             submitSection.id = 'dynamicSubmitSection';
@@ -139,14 +153,9 @@
                 
                 <div id="finalSubmitForm" class="user-box" style="display: none;">
                     <h3 style="margin-top:0; color:#1e3a8a;">🎉 太棒了！您已完成所有題目</h3>
-                    <p style="color:#475569; font-size:14px; margin-bottom:15px;">請在下方輸入您的姓名，將成績同步至晨會即時排行榜：</p>
+                    <p style="color:#475569; font-size:14px; margin-bottom:15px;">請輸入您的姓名以登記晨會學分與成績：</p>
                     <input type="text" id="userName" placeholder="例：陳大明 醫師" style="margin-bottom: 15px;"><br>
-                    <button onclick="submitQuiz()" class="btn-submit" style="box-shadow: 0 4px 6px -1px rgba(30,64,175,0.3);">確認交卷並看解析</button>
-                </div>
-
-                <div id="rankArea" class="leaderboard">
-                    <h3>🏆 本期晨會即時排行榜</h3>
-                    <div id="rankList"></div>
+                    <button onclick="submitQuiz()" class="btn-submit">確認交卷</button>
                 </div>
             `;
             mainContainer.appendChild(submitSection);
@@ -157,7 +166,6 @@
         }
     }
 
-    // 🌟 第一階段：點擊「回答完畢，計算分數」
     function revealSubmitForm() {
         let allAnswered = true;
         questionsArray.forEach((q, idx) => {
@@ -166,19 +174,14 @@
         });
 
         if (!allAnswered) {
-            const confirmGap = confirm('偵測到還有題目尚未作答，確定要現在結算分數嗎？');
-            if (!confirmGap) return;
+            if (!confirm('尚有題目未作答，確定要現在交卷嗎？')) return;
         }
 
-        // 隱藏第一階段按鈕，秀出姓名框
         document.getElementById('quizActionArea').style.display = 'none';
         document.getElementById('finalSubmitForm').style.display = 'block';
-        
-        // 滑動引導至輸入框
         document.getElementById('finalSubmitForm').scrollIntoView({ behavior: 'smooth' });
     }
 
-    // 第二階段：輸入名字點擊「確認交卷並看解析」
     async function submitQuiz() {
         const userName = document.getElementById('userName').value.trim();
         if (!userName) {
@@ -199,12 +202,21 @@
 
             if (userAnswer === correctAnswer) {
                 correctCount++;
-                feedbackBox.innerHTML = `<span style="color:#15803d; font-weight:600;">✅ 答對了！</span><br><span style="color:#64748b; font-size:14px;">💡 解析：${q.explanation || '無'}</span>`;
+                // 🌟 前後測關鍵差異處理：
+                if (quizStatus === 'post') {
+                    feedbackBox.innerHTML = `<span style="color:#15803d; font-weight:600;">✅ 答對了！</span><br><span style="color:#64748b; font-size:14px;">💡 解析：${q.explanation || '無'}</span>`;
+                } else {
+                    feedbackBox.innerHTML = `<span style="color:#15803d; font-weight:600;">✅ 答對了！</span>`;
+                }
                 feedbackBox.style.background = "#ecfdf5";
                 feedbackBox.style.borderLeft = "4px solid var(--success)";
             } else {
                 wrongQuestionsArray.push(`Q${idx + 1}`);
-                feedbackBox.innerHTML = `<span style="color:#b91c1c; font-weight:600;">❌ 答錯囉！正確答案是 (${correctAnswer})</span><br><span style="color:#64748b; font-size:14px;">💡 解析：${q.explanation || '無'}</span>`;
+                if (quizStatus === 'post') {
+                    feedbackBox.innerHTML = `<span style="color:#b91c1c; font-weight:600;">❌ 答錯囉！正確答案是 (${correctAnswer})</span><br><span style="color:#64748b; font-size:14px;">💡 解析：${q.explanation || '無'}</span>`;
+                } else {
+                    feedbackBox.innerHTML = `<span style="color:#b91c1c; font-weight:600;">❌ 答錯囉！</span>`; // 前測不給答案與詳解
+                }
                 feedbackBox.style.background = "#fef2f2";
                 feedbackBox.style.borderLeft = "4px solid var(--error)";
             }
@@ -214,7 +226,7 @@
         const wrongQuestionsString = wrongQuestionsArray.join(', ');
 
         try {
-            // 成績與錯題上傳 Supabase
+            // 寫入成績，帶入發布者當前設定的 test_type
             const { error: insertError } = await mySupabase
                 .from('quiz_results')
                 .insert([
@@ -222,65 +234,34 @@
                         user_name: userName, 
                         quiz_id: currentQuizId, 
                         score: finalScore,
-                        wrong_questions: wrongQuestionsString
+                        wrong_questions: wrongQuestionsString,
+                        test_type: quizStatus // 紀錄是前測還是後測的得分
                     }
                 ]);
 
             if (insertError) throw insertError;
 
-            // 顯示最上方的分數看板
-            document.getElementById('scoreDisplay').innerText = `${finalScore} / 100 分`;
+            // 提示文字
+            const testLabel = quizStatus === 'pre' ? '【前測】' : '【後測】';
+            document.getElementById('scoreDisplay').innerText = `${testLabel} ${finalScore} / 100 分`;
+            
+            if (quizStatus === 'pre') {
+                document.getElementById('resultNote').innerText = '提示：前測階段暫不公開詳細解析，請留意晨會講者的簡報說明喔！';
+            } else {
+                document.getElementById('resultNote').innerText = '提示：下方已解鎖題目完整解析，歡迎複習！';
+            }
+
             document.getElementById('resultCard').style.display = 'block';
-
-            // 隱藏交卷輸入框區塊
             document.getElementById('finalSubmitForm').style.display = 'none'; 
-
-            // 刷新排行榜數據
-            loadRankings();
-
-            // 自動捲回最上方讓同仁看成績與詳解
             window.scrollTo({ top: 0, behavior: 'smooth' });
 
         } catch (err) {
             console.error(err);
-            alert(`成績上傳失敗，請通知管理員：${err.message}`);
-        }
-    }
-
-    async function loadRankings() {
-        try {
-            const { data: rankData, error } = await mySupabase
-                .from('quiz_results')
-                .select('*')
-                .eq('quiz_id', currentQuizId)
-                .order('score', { ascending: false })
-                .limit(10);
-
-            if (error) throw error;
-
-            const rankArea = document.getElementById('rankArea');
-            const rankList = document.getElementById('rankList');
-            rankArea.style.display = 'block';
-            rankList.innerHTML = '';
-
-            const medals = ['🥇', '🥈', '🥉'];
-            rankData.forEach((row, index) => {
-                const medal = medals[index] || `🔹 [第 ${index + 1} 名]`;
-                const isTop1 = index === 0 ? 'class="rank-1"' : '';
-                rankList.innerHTML += `
-                    <div style="padding: 10px; background: white; margin-bottom: 5px; border-radius: 6px; display: flex; justify-content: space-between; border: 1px solid #e5e7eb;">
-                        <span ${isTop1}>${medal} ${row.user_name}</span>
-                        <span style="font-weight:700; color:var(--primary);">${row.score} 分</span>
-                    </div>
-                `;
-            });
-        } catch (err) {
-            console.error(err);
+            alert(`成績上傳失敗：${err.message}`);
         }
     }
 
     window.onload = loadQuiz;
 </script>
-
 </body>
 </html>
